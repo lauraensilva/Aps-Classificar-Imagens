@@ -4,16 +4,15 @@ from PIL import Image
 import requests
 import base64
 import json
-import os # Importe a biblioteca OS
-from dotenv import load_dotenv # Importe a função load_dotenv
-
+import os 
+from dotenv import load_dotenv
 # Carrega as variáveis do arquivo .env para o ambiente
 load_dotenv()
 
 # Lê a chave de API do ambiente. Retorna None se não encontrar.
 MINHA_CHAVE_API = os.getenv("GOOGLE_API_KEY")
 
-# --- Função de chamada da API (sem alterações) ---
+# --- Função de chamada da API 
 def analisar_com_api_key(caminho_imagem, chave_api):
     """
     Envia uma imagem para a Vision API usando uma Chave de API e retorna a resposta.
@@ -52,11 +51,11 @@ def analisar_com_api_key(caminho_imagem, chave_api):
         return {"error": f"Erro na requisição para a API: {e}"}
 
 
-# --- Classe da Aplicação (com a chamada atualizada) ---
+
 class ChatVisionApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        # ... (resto do seu __init__ sem alterações) ...
+        
         self.title("Analisador de Imagens")
         self.geometry("700x550")
         self.minsize(500, 400)
@@ -74,7 +73,7 @@ class ChatVisionApp(ctk.CTk):
         self.select_image_button.grid(row=0, column=1, padx=10, pady=10)
         self.adicionar_mensagem_ao_chat("Assistente", "Olá! Por favor, envie uma imagem para análise.")
 
-    # ... (funções adicionar_mensagem_ao_chat e adicionar_imagem_ao_chat sem alterações) ...
+
     def adicionar_mensagem_ao_chat(self, remetente, texto):
         message_label = ctk.CTkLabel(self.chat_frame, text=f"{remetente}:\n{texto}", justify="left", wraplength=400)
         if remetente == "Assistente":
@@ -107,10 +106,10 @@ class ChatVisionApp(ctk.CTk):
 
     def processar_resposta(self, image_path):
         """Função que chama a API do Google Cloud e exibe a resposta."""
-        # A chave agora é lida da variável global carregada do .env
+        
         dados_resposta = analisar_com_api_key(image_path, MINHA_CHAVE_API)
         
-        # ... (resto da função processar_resposta sem alterações) ...
+      
         if "error" in dados_resposta:
             resposta_final = f"Ocorreu um erro: {dados_resposta['error']}"
         elif "responses" in dados_resposta and dados_resposta["responses"]:
@@ -130,7 +129,7 @@ class ChatVisionApp(ctk.CTk):
         self.selected_file_label.configure(text="Nenhum arquivo selecionado.")
 
 if __name__ == "__main__":
-    # Adicionamos uma verificação para garantir que a chave foi carregada
+   
     if not MINHA_CHAVE_API:
         print("ERRO: A variável de ambiente GOOGLE_API_KEY não foi definida.")
         print("Por favor, crie um arquivo .env e adicione GOOGLE_API_KEY=sua_chave")
