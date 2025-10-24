@@ -4,6 +4,7 @@ from tkinter import filedialog
 from PIL import Image
 import os
 import io
+import cv2 
 from dotenv import load_dotenv
 from google.cloud import vision
 from google.api_core import exceptions as google_exceptions
@@ -31,7 +32,6 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = json_cred_path
 # Dicionário para traduzir os rótulos da API (Inglês) para Português
 # E TAMBÉM serve como lista de filtros para TODOS OS EPIs que queremos encontrar.
 TRADUCOES_E_FILTROS = {
-    # Chave (Inglês da API) : Valor (Português para exibir)
     
     # --- Capacetes ---
     "Helmet": "Capacete",
@@ -67,8 +67,7 @@ TRADUCOES_E_FILTROS = {
     "Dust mask": "Máscara de Poeira"
 }
 
-# Criamos um set (conjunto) com todas as chaves em INGLÊS para uma filtragem rápida.
-# O código usará isso para verificar se o 'obj.name' é um dos EPIs que procuramos.
+# set (conjunto) com todas as chaves em INGLÊS para uma filtragem rápida.
 OBJETOS_FILTRADOS = set(TRADUCOES_E_FILTROS.keys())
 
 
@@ -113,7 +112,7 @@ class ChatVisionApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Analisador de Objetos (Google Vision API)")
-        self.geometry("700x600") # Aumentei um pouco a altura
+        self.geometry("700x600") 
         self.minsize(500, 400)
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -188,10 +187,10 @@ class ChatVisionApp(ctk.CTk):
         self.after(100, lambda: self.processar_resposta(filepath))
 
  
+   # --- FUNÇÃO PARA O CORTE ---
     def processar_resposta(self, image_path):
         """
-        Chama a API, filtra por 'Capacete' e 'Luva',
-        traduz os rótulos e exibe os recortes.
+        Chama a API, filtra, traduz e CORTA os objetos usando OpenCV.
         """
         
         # 1. Chama a função de análise (object_localization)
@@ -212,65 +211,61 @@ class ChatVisionApp(ctk.CTk):
         
         # 3. Processa a resposta de SUCESSO
         objects = dados_resposta.localized_object_annotations
-
-        # --- LÓGICA DE FILTRAGEM ---
-        # Filtra a lista 'objects' para conter APENAS os que estão em OBJETOS_FILTRADOS
         objetos_filtrados = [obj for obj in objects if obj.name in OBJETOS_FILTRADOS]
-        # ----------------------------
 
         if objetos_filtrados:
             self.adicionar_mensagem_ao_chat("Assistente", f"✅ Análise concluída. {len(objetos_filtrados)} EPI(s) encontrado(s):")
             
             try:
-                original_img = Image.open(image_path)
-                width, height = original_img.size
+                # Carrega a imagem usando OpenCV
+                original_img_cv2 = cv2.imread(image_path)
+                # Obtém altura e largura (OpenCV inverte a ordem comparado ao PIL)
+                height, width = original_img_cv2.shape[:2] 
             except Exception as e:
                 self.adicionar_mensagem_ao_chat("Assistente", f"Erro ao abrir a imagem original para cortar: {e}")
                 return
+           
 
-            # Itera sobre cada objeto FILTRADO
             for i, obj in enumerate(objetos_filtrados):
                 
-                # --- LÓGICA DE TRADUÇÃO ---
                 nome_en = obj.name
-                # Busca a tradução no dicionário; se não achar, usa o nome em inglês mesmo
                 nome_pt = TRADUCOES_E_FILTROS.get(nome_en, nome_en)
-                # --------------------------
-
                 score = obj.score * 100
                 
-                # Prepara o texto da resposta com o nome em Português
                 texto_obj = f"Item {i+1}: {nome_pt}\n(Confiança: {score:.2f}%)"
                 self.adicionar_mensagem_ao_chat("Assistente", texto_obj)
 
-                # --- Lógica de Corte da Imagem ---
+                # --- Lógica de Corte da Imagem 
                 vertices = obj.bounding_poly.normalized_vertices
                 
                 # Converte coordenadas normalizadas (0.0 a 1.0) em pixels
-                box = (
-                    vertices[0].x * width,  # x1 (min x)
-                    vertices[0].y * height, # y1 (min y)
-                    vertices[2].x * width,  # x2 (max x)
-                    vertices[2].y * height  # y2 (max y)
-                )
-                
                 # Arredonda para garantir que são pixels inteiros
-                box = tuple(map(int, box)) 
+                x1 = int(vertices[0].x * width)
+                y1 = int(vertices[0].y * height)
+                x2 = int(vertices[2].x * width)
+                y2 = int(vertices[2].y * height)
+
+                # Garante que as coordenadas estão dentro dos limites da imagem
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(width, x2), min(height, y2)
                 
-                # Corta a imagem original usando as coordenadas
-                cropped_img = original_img.crop(box)
+                # Corta a imagem usando o fatiamento (slicing) do NumPy/OpenCV
+                cropped_img_cv2 = original_img_cv2[y1:y2, x1:x2]
+                
+                # --- Conversão de volta para PIL ---
+                # 1. Converte de BGR (padrão OpenCV) para RGB (padrão PIL)
+                rgb_img = cv2.cvtColor(cropped_img_cv2, cv2.COLOR_BGR2RGB)
+                # 2. Converte do array NumPy (OpenCV) para um objeto Imagem PIL
+                cropped_img_pil = Image.fromarray(rgb_img)
                 
                 # Adiciona a imagem CORTADA ao chat (passando o objeto PIL)
-                self.adicionar_imagem_ao_chat("Assistente", cropped_img, is_path=False)
+                self.adicionar_imagem_ao_chat("Assistente", cropped_img_pil, is_path=False)
 
         else:
-            # 4. Nenhum objeto DESEJADO encontrado
             resposta_final = "Análise concluída, mas nenhum EPI foi encontrado na imagem."
             self.adicionar_mensagem_ao_chat("Assistente", resposta_final)
         
-        # Reseta o status
         self.selected_file_label.configure(text="Nenhum arquivo selecionado.")
-
 
 # ==============================================================================
 # 4. PONTO DE ENTRADA DA APLICAÇÃO
